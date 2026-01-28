@@ -10,20 +10,24 @@ window.customCards.push({
 });
 
 class InfiniteCampusGrades extends LitElement {
+
+  constructor() {
+    super();
+    this.students = [];
+    this.grades = [];
+  }
+
   set hass(hass) {
     this._hass = hass;
 
     if (!this.config || !this._hass) return;
 
-    this.students = [];
-    this.grades = [];
-
     if (Array.isArray(this.config.entities)) {
-      const configStudents = this.config.entities.find(a => a.entity && a.entity.includes("students"));
-      const configGrades = this.config.entities.find(a => a.entity && a.entity.includes("grades"));
+      var configStudents = this.config.entities.find(a => a.entity && a.entity.includes("students"));
+      var configGrades = this.config.entities.find(a => a.entity && a.entity.includes("grades"));
 
-      const eStudents = configStudents && this._hass.states[configStudents.entity] ? this._hass.states[configStudents.entity] : null;
-      const eGrades = configGrades && this._hass.states[configGrades.entity] ? this._hass.states[configGrades.entity] : null;
+      var eStudents = configStudents && this._hass.states[configStudents.entity] ? this._hass.states[configStudents.entity] : null;
+      var eGrades = configGrades && this._hass.states[configGrades.entity] ? this._hass.states[configGrades.entity] : null;
 
       if (eStudents && eStudents.attributes && eStudents.attributes.student) {
         this.students = eStudents.attributes.student;
@@ -38,6 +42,8 @@ class InfiniteCampusGrades extends LitElement {
   }
 
   render() {
+    if (!this.students || !this.grades) return html``;
+
     return html`
       ${this._renderStyle()}
       <ha-card header="Infinite Campus - Grades">
@@ -147,7 +153,7 @@ class InfiniteCampusGrades extends LitElement {
   }
 
   getCardSize() {
-    return this.students.length * 2 + 1;
+    return (this.students ? this.students.length : 0) * 2 + 1;
   }
 
   static getConfigElement() {
