@@ -3,46 +3,50 @@ import { LitElement, html } from "https://unpkg.com/lit?module";
 // Configure the preview in the Lovelace card picker
 window.customCards = window.customCards || [];
 window.customCards.push({
-    type: 'infinite-campus-grades',
-    name: 'Infinite Campus - Grades Card',
-    preview: false,
-    description: 'A card used to display Infinite Campus Grades.',
+  type: 'infinite-campus-grades',
+  name: 'Infinite Campus - Grades Card',
+  preview: true,
+  description: 'A card used to display Infinite Campus Grades.',
 });
 
 class InfiniteCampusGrades extends LitElement {
-    set hass(hass) {
-        this._hass = hass;
+  set hass(hass) {
+    this._hass = hass;
 
-        this.students = [];
-        this.grades = [];
+    if (!this.config || !this._hass) return;
 
-        if (Array.isArray(this.config.entities)) {
-            const configStudents = this.config.entities.find(a => a.entity.includes("students"))
-            const configGrades = this.config.entities.find(a => a.entity.includes("grades"))
+    this.students = [];
+    this.grades = [];
 
-            const eStudents = configStudents && configStudents.entity in this._hass.states ? this._hass.states[configStudents.entity] : null
-            const eGrades = configGrades && configGrades.entity in this._hass.states ? this._hass.states[configGrades.entity] : null
+    if (Array.isArray(this.config.entities)) {
+      const configStudents = this.config.entities.find(a => a.entity && a.entity.includes("students"));
+      const configGrades = this.config.entities.find(a => a.entity && a.entity.includes("grades"));
 
-            if (eStudents && eStudents.attributes.student) {
-                this.students = eStudents.attributes.student;
-            }
+      const eStudents = configStudents && this._hass.states[configStudents.entity] ? this._hass.states[configStudents.entity] : null;
+      const eGrades = configGrades && this._hass.states[configGrades.entity] ? this._hass.states[configGrades.entity] : null;
 
-            if (eGrades && eGrades.attributes.grade) {
-                this.grades = eGrades.attributes.grade;
-            }
-        }
+      if (eStudents && eStudents.attributes && eStudents.attributes.student) {
+        this.students = eStudents.attributes.student;
+      }
+
+      if (eGrades && eGrades.attributes && eGrades.attributes.grade) {
+        this.grades = eGrades.attributes.grade;
+      }
     }
 
-    render() {
-        return html`
+    this.requestUpdate();
+  }
+
+  render() {
+    return html`
       ${this._renderStyle()}
       <ha-card header="Infinite Campus - Grades">
         <div class="card-content">
           ${this.students.map(student => {
-            const studentGrades = this.grades.filter(g => g.person_id == student.personid);
-            if (studentGrades.length === 0) return html``;
+      const studentGrades = this.grades.filter(g => g.person_id == student.personid);
+      if (studentGrades.length === 0) return html``;
 
-            return html`
+      return html`
               <div class="student-section">
                 <div class="student-header">
                   <ha-icon icon="mdi:account-school"></ha-icon>
@@ -64,14 +68,14 @@ class InfiniteCampusGrades extends LitElement {
                 </div>
               </div>
             `;
-        })}
+    })}
         </div>
       </ha-card>
     `;
-    }
+  }
 
-    _renderStyle() {
-        return html`
+  _renderStyle() {
+    return html`
       <style>
         .student-section {
           margin-bottom: 1.5em;
@@ -133,27 +137,31 @@ class InfiniteCampusGrades extends LitElement {
         }
       </style>
     `;
-    }
+  }
 
-    setConfig(config) {
-        if (!config.entities) {
-            throw new Error('You need to define entities');
-        }
-        this.config = config;
+  setConfig(config) {
+    if (!config.entities) {
+      throw new Error('You need to define entities');
     }
+    this.config = config;
+  }
 
-    getCardSize() {
-        return this.students.length * 2 + 1;
-    }
+  getCardSize() {
+    return this.students.length * 2 + 1;
+  }
 
-    static getStubConfig() {
-        return {
-            entities: [
-                { entity: 'sensor.infinite_campus_students' },
-                { entity: 'sensor.infinite_campus_grades' }
-            ]
-        }
+  static getConfigElement() {
+    return document.createElement("content-card-editor");
+  }
+
+  static getStubConfig() {
+    return {
+      entities: [
+        { entity: 'sensor.infinite_campus_students' },
+        { entity: 'sensor.infinite_campus_grades' }
+      ]
     }
+  }
 }
 
 customElements.define('infinite-campus-grades', InfiniteCampusGrades);
