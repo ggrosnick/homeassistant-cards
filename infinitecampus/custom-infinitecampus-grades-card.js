@@ -5,146 +5,104 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'infinite-campus-grades',
   name: 'Infinite Campus - Grades Card',
-  preview: true,
+  preview: false,
   description: 'A card used to display Infinite Campus Grades.',
 });
 
 class InfiniteCampusGrades extends LitElement {
-
-  constructor() {
-    super();
-    this.students = [];
-    this.grades = [];
-  }
-
+  // Whenever the state changes, a new `hass` object is set. Use this to
+  // update your content.
   set hass(hass) {
+    // Initialize the content if it's not there yet.
     this._hass = hass;
 
-    if (!this.config || !this._hass) return;
+    this.students = new Array();
+    this.grades = new Array();
 
     if (Array.isArray(this.config.entities)) {
-      var configStudents = this.config.entities.find(a => a.entity && a.entity.includes("students"));
-      var configGrades = this.config.entities.find(a => a.entity && a.entity.includes("grades"));
+      var configStudents = this.config.entities.find(a => a.entity == "sensor.infinite_campus_students")
+      var configGrades = this.config.entities.find(a => a.entity == "sensor.infinite_campus_grades")
 
-      var eStudents = configStudents && this._hass.states[configStudents.entity] ? this._hass.states[configStudents.entity] : null;
-      var eGrades = configGrades && this._hass.states[configGrades.entity] ? this._hass.states[configGrades.entity] : null;
+      var eStudents = configStudents.entity in this._hass.states ? this._hass.states[configStudents.entity] : null
+      var eGrades = configGrades.entity in this._hass.states ? this._hass.states[configGrades.entity] : null
 
-      if (eStudents && eStudents.attributes && eStudents.attributes.student) {
-        this.students = eStudents.attributes.student;
-      }
+      eStudents.attributes.student.forEach(student => {
+        this.students.push(student)
+      })
 
-      if (eGrades && eGrades.attributes && eGrades.attributes.grade) {
-        this.grades = eGrades.attributes.grade;
-      }
+      eGrades.attributes.grade.forEach(grade => {
+        this.grades.push(grade)
+      })
     }
-
-    this.requestUpdate();
   }
 
   render() {
-    if (!this.students || !this.grades) return html``;
-
-    return html`
-      ${this._renderStyle()}
+    return html
+      `
+    ${this._renderStyle()}
+    ${html
+        `
       <ha-card header="Infinite Campus - Grades">
         <div class="card-content">
-          ${this.students.map(student => {
-      const studentGrades = this.grades.filter(g => g.person_id == student.personid);
-      if (studentGrades.length === 0) return html``;
-
-      return html`
-              <div class="student-section">
-                <div class="student-header">
-                  <ha-icon icon="mdi:account-school"></ha-icon>
-                  <span class="student-name">${student.firstname} ${student.lastname}</span>
-                </div>
-                <div class="grades-list">
-                  ${studentGrades.map(grade => html`
-                    <div class="grade-item">
-                      <div class="course-info">
-                        <span class="course-name">${grade.course_name}</span>
-                        <span class="task-name">${grade.task_name}</span>
-                      </div>
-                      <div class="grade-values">
-                        <span class="letter-grade">${grade.current_grade}</span>
-                        <span class="percentage">${grade.current_score}%</span>
-                      </div>
-                    </div>
-                  `)}
+        ${this.students.map(student =>
+          html
+            `
+            <div class="info flex">
+              <div>
+                <span class="student_name"><ha-icon icon="mdi:account-school"></ha-icon> ${student.firstname} ${student.lastname} (${student.studentnumber})</span>
+                <div class="secondary">
+                ${this.grades.map(grade =>
+              html
+                `
+                  ${grade.person_id == student.personid ? html
+                  `
+                    <span>${grade.course_name}</span>
+                    <mwc-list class="mdc-list--dense">
+                      <mwc-list-item class="mwc-compact">
+                        <span>${grade.task_name} - ${grade.current_grade} (${grade.current_score}%)</span>
+                      </mwc-list-item>
+                    </mwc-list>
+                    `
+                  : ""}
+                  `
+            )}
                 </div>
               </div>
-            `;
-    })}
+            </div>
+          `
+        )}
         </div>
       </ha-card>
-    `;
+      `
+      }
+    `
   }
 
   _renderStyle() {
-    return html`
+    return html
+      `
       <style>
-        .student-section {
-          margin-bottom: 1.5em;
+        .info {
+          padding-bottom: 1em;
         }
-        .student-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 8px;
-          font-weight: bold;
-          border-bottom: 1px solid var(--divider-color);
-          padding-bottom: 4px;
-        }
-        .student-name {
-          font-size: 1.1em;
-        }
-        .grades-list {
-          margin-left: 24px;
-        }
-        .grade-item {
+        .flex {
           display: flex;
           justify-content: space-between;
-          align-items: center;
-          padding: 6px 0;
-          border-bottom: 1px solid var(--divider-color, #eee);
         }
-        .grade-item:last-child {
-          border-bottom: none;
+        .secondary {
+          display: block;
+          color: #3D95EC;
+          margin-left: 28px;
         }
-        .course-info {
-          display: flex;
-          flex-direction: column;
-        }
-        .course-name {
-          font-weight: 500;
-          color: var(--primary-text-color);
-        }
-        .task-name {
-          font-size: 0.8em;
-          color: var(--secondary-text-color);
-        }
-        .grade-values {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-        .letter-grade {
-          font-weight: bold;
-          font-size: 1.2em;
-          color: var(--primary-color, #3D95EC);
-          min-width: 1.5em;
-          text-align: center;
-        }
-        .percentage {
-          font-size: 0.9em;
-          color: var(--secondary-text-color);
-          min-width: 3.5em;
-          text-align: right;
+        .mwc-compact{
+          height: 24px !important
         }
       </style>
     `;
   }
 
+  // The user supplied configuration. Throw an exception and Home Assistant
+  // will render an error card.
   setConfig(config) {
     if (!config.entities) {
       throw new Error('You need to define entities');
@@ -152,8 +110,10 @@ class InfiniteCampusGrades extends LitElement {
     this.config = config;
   }
 
+  // The height of your card. Home Assistant uses this to automatically
+  // distribute all cards over the available columns.
   getCardSize() {
-    return (this.students ? this.students.length : 0) * 2 + 1;
+    return 3;
   }
 
   static getConfigElement() {
@@ -168,6 +128,7 @@ class InfiniteCampusGrades extends LitElement {
       ]
     }
   }
+
 }
 
 customElements.define('infinite-campus-grades', InfiniteCampusGrades);
