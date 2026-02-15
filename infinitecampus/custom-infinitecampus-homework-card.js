@@ -18,37 +18,52 @@ class InfiniteCampusStudent extends LitElement {
     this._hass = hass;
 
     this.students = new Array();
-    this.courses = new Array();
     this.assignments = new Array();
-    this.courseAssignments = new Array();
+    this.assignmentsByStudent = new Map();
     this.date = new Date().toLocaleDateString('en-CA');
 
-    if(Array.isArray(this.config.entities))
-    {
+    if (Array.isArray(this.config.entities)) {
       var configStudents = this.config.entities.find(a => a.entity == "sensor.infinite_campus_students")
-      var configCourses = this.config.entities.find(a => a.entity == "sensor.infinite_campus_courses")
       var configAssignments = this.config.entities.find(a => a.entity == "sensor.infinite_campus_assignments")
-      
+
+      if (!configStudents || !configAssignments) {
+        return;
+      }
+
       var eStudents = configStudents.entity in this._hass.states ? this._hass.states[configStudents.entity] : null
-      var eCourses = configCourses.entity in this._hass.states ? this._hass.states[configCourses.entity] : null
       var eAssignments = configAssignments.entity in this._hass.states ? this._hass.states[configAssignments.entity] : null
+
+      if (!eStudents || !eStudents.attributes || !Array.isArray(eStudents.attributes.student)) {
+        return;
+      }
+      if (!eAssignments || !eAssignments.attributes || !Array.isArray(eAssignments.attributes.assignment)) {
+        return;
+      }
+
+      eStudents.attributes.student.forEach(student => {
+        this.students.push(student)
+      })
 
       eAssignments.attributes.assignment.forEach(assignment => {
         if ((Date.parse(assignment.duedate) >= Date.parse(this.date) || (assignment.missing)) && !assignment.scorepoints) {
-          this.courseAssignments.push(assignment.coursename)
           this.assignments.push(assignment)
         }
       })
 
-      eCourses.attributes.course.forEach(course => {
-        //console.warn(course)
-        if (!this.courses.some(c => c.coursename == course.coursename) && this.courseAssignments.some(ca => ca == course.coursename)) {
-          this.courses.push(course)
-        }
+      this.assignments.forEach((assignment) => {
+        var key = assignment.personid;
+        var studentAssignments = this.assignmentsByStudent.get(key) || [];
+        studentAssignments.push(assignment);
+        this.assignmentsByStudent.set(key, studentAssignments);
       })
 
-      eStudents.attributes.student.forEach(student => {
-        this.students.push(student)
+      this.assignmentsByStudent.forEach((studentAssignments, personId) => {
+        studentAssignments.sort((a, b) => {
+          var d = Date.parse(a.duedate) - Date.parse(b.duedate);
+          if (!isNaN(d) && d !== 0) return d;
+          return (a.coursename || "").localeCompare(b.coursename || "");
+        });
+        this.assignmentsByStudent.set(personId, studentAssignments);
       })
     }
   }
@@ -74,76 +89,225 @@ class InfiniteCampusStudent extends LitElement {
     return html
     `
     ${this._renderStyle()}
-    ${html
-      `
-      <ha-card header="Infinite Campus - Homework">
+      <ha-card>
+        <div class="card-title">Infinite Campus - Homework</div>
         <div class="card-content">
+        <div class="students-row">
         ${this.students.map(student => 
           html
           `
-            <div class="info flex">
-              <div>
-                <span class="student_name"><ha-icon icon="mdi:account-school"></ha-icon> ${student.firstname} ${student.lastname} (${student.studentnumber})</span>
+            ${(() => {
+              var studentAssignments = this.assignmentsByStudent.get(student.personid) || [];
+              var missingCount = studentAssignments.filter(a => a.missing === true).length;
+              var dueTodayCount = studentAssignments.filter(a => this._statusForAssignment(a) == "due-today").length;
+
+              return html`
+              <div class="student-card">
+                <div class="student-header">
+                  <span class="student_name"><ha-icon icon="mdi:account-school"></ha-icon> ${student.firstname} ${student.lastname} (${student.studentnumber})</span>
+                  <span class="student-count">${studentAssignments.length} items</span>
+                </div>
+                <div class="student-summary">
+                  <span class="summary-pill missing">Missing ${missingCount}</span>
+                  <span class="summary-pill today">Due today ${dueTodayCount}</span>
+                </div>
                 <div class="secondary">
-                ${this.courses.map(course => 
+                ${studentAssignments.length ? studentAssignments.map(assignment =>
                   html
                   `
-                  ${course.personid == student.personid ? html
-                    `
-                    <span>${course.coursename}</span>
-                    <mwc-list class="mdc-list--dense">
-                    ${this.assignments.map(assignment =>
-                    html
-                    `
-                    ${assignment.personid == student.personid && assignment.coursename == course.coursename ? html
-                        `
-                        <mwc-list-item class="mwc-compact" hasmeta @click="${() => this._handleClick(assignment)}">
-                            <span ${assignment.missing ? "class='missing'" : ""}>${new Date(Date.parse(assignment.duedate)).toLocaleString('en-US', {month: 'numeric', day:'numeric' })} - ${assignment.assignmentname} ${assignment.missing ? "<span class='missing'>missing</span>" : ""}</span>
-                            ${new Date(Date.parse(assignment.duedate)).toLocaleDateString('en-CA') <= this.date ? html`<span slot='meta'><ha-icon icon='mdi:calendar-alert' style='color:#F1D019'></ha-icon></span>` : ""}
-                        </mwc-list-item>
-                        `
-                    :""}
-                    `
-                    )}
-                    `
-                  :""}
-                  </mwc-list>
+                  <div class="assignment-row ${this._statusForAssignment(assignment)}" @click="${() => this._handleClick(assignment)}">
+                    <div class="assignment-main">
+                      <span class="course-name">${assignment.coursename}</span>
+                      <span class="assignment-name">${assignment.assignmentname}</span>
+                    </div>
+                    <span class="due-badge">${this._dueLabel(assignment)}</span>
+                  </div>
                   `
-                )}
+                ) : html`<span class="empty">No upcoming or missing homework</span>`}
                 </div>
               </div>
-            </div>
+              `;
+            })()}
           `
         )}
+        </div>
         <assignment-dialog></assignment-dialog>
         </div>
       </ha-card>
-      `
-      }
     `
+  }
+
+  _statusForAssignment(assignment) {
+    if (assignment.missing === true) return "missing";
+    var due = Date.parse(assignment.duedate);
+    var today = Date.parse(this.date);
+    if (isNaN(due)) return "upcoming";
+    if (due < today) return "overdue";
+    if (due === today) return "due-today";
+    return "upcoming";
+  }
+
+  _dueLabel(assignment) {
+    var due = Date.parse(assignment.duedate);
+    if (isNaN(due)) return "No due date";
+    var dateText = new Date(due).toLocaleString('en-US', { month: 'numeric', day: 'numeric' });
+    var status = this._statusForAssignment(assignment);
+    if (status == "missing") return `${dateText} missing`;
+    if (status == "overdue") return `${dateText} overdue`;
+    if (status == "due-today") return `${dateText} today`;
+    return dateText;
   }
 
   _renderStyle() {
     return html
     `
       <style>
-        .info {
-          padding-bottom: 1em;
+        .card-title {
+          color: #0b1220;
+          font-size: 22px;
+          font-weight: 800;
+          line-height: 1.2;
+          padding: 8px 16px 4px;
         }
-        .flex {
+
+        .students-row {
+          display: flex;
+          gap: 12px;
+          overflow-x: auto;
+          padding-bottom: 4px;
+          scroll-snap-type: x proximity;
+        }
+
+        .students-row::-webkit-scrollbar {
+          height: 8px;
+        }
+
+        .students-row::-webkit-scrollbar-thumb {
+          background: var(--divider-color);
+          border-radius: 999px;
+        }
+
+        .students-row::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .student-card {
+          flex: 1 1 clamp(320px, 48%, 520px);
+          min-width: 320px;
+          border: 1px solid var(--divider-color);
+          border-radius: 10px;
+          padding: 10px 12px;
+          scroll-snap-align: start;
+        }
+
+        .student-header {
           display: flex;
           justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
         }
+
+        .student_name {
+          font-size: 15px;
+          line-height: 1.25;
+          font-weight: 700;
+          color: #1f2937;
+        }
+
+        .student-count {
+          font-size: 14px;
+          font-weight: 600;
+          color: #374151;
+        }
+
+        .student-summary {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+
+        .summary-pill {
+          font-size: 12px;
+          font-weight: 600;
+          border-radius: 999px;
+          padding: 2px 8px;
+        }
+
+        .summary-pill.missing {
+          color: #b71c1c;
+          background: rgba(198, 40, 40, 0.2);
+        }
+
+        .summary-pill.today {
+          color: #0d47a1;
+          background: rgba(21, 101, 192, 0.2);
+        }
+
         .secondary {
-          display: block;
-          color: #3D95EC;
-          margin-left: 28px;
+          display: grid;
+          gap: 6px;
         }
-        .missing {
-          color: #a3262c;
+
+        .assignment-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          padding: 9px 10px;
+          border-radius: 8px;
+          cursor: pointer;
+          border: 1px solid rgba(31, 41, 55, 0.14);
+          background: rgba(255, 255, 255, 0.82);
         }
-        .mwc-compact{
-          height: 24px !important
+
+        .assignment-main {
+          display: grid;
+          gap: 2px;
+        }
+
+        .course-name {
+          font-size: 14px;
+          font-weight: 600;
+        }
+
+        .assignment-name {
+          font-size: 13px;
+          color: #374151;
+        }
+
+        .due-badge {
+          font-size: 12px;
+          font-weight: 600;
+          border-radius: 999px;
+          padding: 2px 8px;
+          white-space: nowrap;
+          background: rgba(120, 120, 120, 0.2);
+        }
+
+        .assignment-row.missing .due-badge {
+          color: #b71c1c;
+          background: rgba(198, 40, 40, 0.2);
+        }
+
+        .assignment-row.overdue .due-badge {
+          color: #e65100;
+          background: rgba(245, 124, 0, 0.2);
+        }
+
+        .assignment-row.due-today .due-badge {
+          color: #0d47a1;
+          background: rgba(21, 101, 192, 0.2);
+        }
+
+        .assignment-row.upcoming .due-badge {
+          color: #1b5e20;
+          background: rgba(46, 125, 50, 0.2);
+        }
+
+        .empty {
+          color: var(--secondary-text-color);
+          font-style: italic;
         }
       </style>
     `;
